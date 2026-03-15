@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/rendercv/rendercv/refs/tags/v2.7/schema.json
+cv:
+  name: Simon Sagmeister
+  headline: Research Associate and Teamlead
+  location: Munich, Germany
+  email: 
+  photo:
+  phone:
+  website: 
+  social_networks:
+    - network: LinkedIn
+      username: simonsag
+    - network: GitHub
+      username: simonsag96
+  custom_connections:
+  sections:
+    education:
+      - institution: Technical University of Munich
+        area: Mechanical Engineering
+        degree: Dr.-Ing.
+        start_date: 2022-03
+        end_date: present
+        location: Munich, Germany
+        summary:
+        highlights:
+          Designing a framework which allows systematic and scenario-based evaluation of trajectory tracking control algorithms at the limits of handling.
+      - institution: Technical University of Munich
+        area: Mechanical Engineering
+        degree: M.Sc.
+        start_date: 2019-04
+        end_date: 2021-07
+        location: Munich, Germany
+        summary:
+        highlights:
+          - 'Final Grade: 1.2 (Top 7% of cohort)'
+          - 'Specialization: Control Theory, Robotics, AI, and Machine Learning'
+          - 'Master''s thesis: Neural Networks: Real-time Capable Trajectory Planning through Supervised Learning'
+      - institution: Technical University of Munich
+        area: Mechanical Engineering
+        degree: B.Sc.
+        start_date: 2015-10
+        end_date: 2019-03
+        location: Munich, Germany
+        summary:
+        highlights:
+          - 'Final Grade: 1.5 (Top 3% of cohort)'
+          - 'Specialization: Mechatronics, Control Theory, and Automotive Engineering'
+          - 'Bachelor''s thesis: Experimentelle Untersuchung von zweiphasen-Phänomenen am Beispiel eines Motorrad Bremssystems'
+    experience:
+      - company: Technical University of Munich (TUM)
+        position: Team Lead | TUM Autonomous Motorsport
+        start_date: 2024-07
+        end_date: present
+        location: Munich, Germany
+        summary:
+        highlights:
+          - Lead developer and system architect for the TUM Autonomous Motorsport software stack, enabling autonomy at speeds above 280 km/h with safe overtaking on F1 circuits.
+          - Design and maintain system architecture, including modular components, deployment, state machines, and online safety monitoring.
+          - Lead a team of around 15 PhD researchers and several Master's students.
+          - Achieved major milestones including lap times within 1s of F1 driver Daniil Kvyat and winning the 2025 A2RL Championship.
+      - company: Technical University of Munich (TUM)
+        position: Research Group Lead | Autonomous Vehicle Evaluation
+        start_date: 2024-07
+        end_date: present
+        location: Munich, Germany
+        summary:
+        highlights:
+          - Lead a research group of 5-8 PhD researchers, developing and applying new methodologies for evaluating autonomous driving algorithms.
+          - Manage and mentor team members, guiding their research progress and supporting skill development.
+          - Identify key challenges in algorithm evaluation and author research proposals to secure funding for future projects.
+      - company: Technical University of Munich (TUM)
+        position: Research Associate & Software Developer
+        start_date: 2022-03
+        end_date: present
+        location: Munich, Germany
+        summary:
+        highlights:
+          - Develop and validate control algorithms in simulation and on real race cars.
+          - Supervise and mentor students; contribute to lectures and course development in autonomous systems.
+          - Test algorithms under real-world conditions during autonomous racing events.
+      - company: Jungheinrich Degernpoint AG & Co. KG
+        position: Software Developer Embedded Systems
+        start_date: 2021-08
+        end_date: 2022-02
+        location: Degernpoint, Germany
+        summary:
+        highlights:
+          - Developed embedded control features for high-rack stackers using CODESYS and the IEC 61131-3 programming standard.
+          - Explored and prototyped new end-user features.
+          - Tested and validated performance on devices in real-world conditions.
+      - company: ZF Friedrichshafen AG
+        position: Working Student / Engineering Intern
+        start_date: 2018-03
+        end_date: 2019-04
+        location: Passau, Germany
+        summary:
+        highlights:
+          - Worked on the development of CVT transmissions for agricultural machinery, modifying components, creating production drawings, and deriving design improvements.
+          - Utilized PTC Creo for 3D CAD modeling and Axalant (Oracle) for PDM management.
+    skills:
+      - label: Core Competencies
+        details: Autonomous Driving, Control Theory, Simulation, Mechatronics, Software Architecture
+      - label: Programming
+        details: C++, Python, IEC 61131-3, Matlab
+      - label: Tools & Frameworks
+        details: ROS 2, CMake, PyTorch, Docker, Git, CI/CD
+design:
+  theme: classic
+locale:
+  language: english
+settings:
+  current_date: today
+  render_command:
+    output_folder: rendercv_output
+    pdf_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.pdf
+    markdown_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.md
+    html_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.html
+    png_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.png
