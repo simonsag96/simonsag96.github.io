@@ -17,9 +17,8 @@ hugoblox:
   ids:
     doi: 10.1109/RAP.2026.3704080
 links:
-  - type: preprint
-    provider: arxiv
-    id: "2601.07052"
+  - type: pdf
+    url: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=11568503
 projects: []
 slides: ""
 ---
