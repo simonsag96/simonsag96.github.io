@@ -1,0 +1,33 @@
+{{/* Opening markup for the `publication` view. See publication.html.
+
+  This also renders the section heading, which the collection block would
+  otherwise emit as a plain <div class="text-3xl">. Two problems with that: it
+  is a size smaller than the h2 every other section on the page uses, and being
+  a div it leaves the eleven publication <h3>s with no heading above them, so
+  the document outline files them under the preceding section.
+
+  The block only renders its own header when `content.title` is set, so that is
+  left empty in content/_index.md and the text comes from `content.heading`
+  instead — same place, different key, purely to keep the block quiet.
+*/}}
+
+{{ $content := .page.content }}
+{{ $heading := "" }}
+{{ with index $content "heading" }}{{ $heading = printf "%v" . }}{{ end }}
+{{ $subtitle := "" }}
+{{ with index $content "subtitle" }}{{ $subtitle = printf "%v" . }}{{ end }}
+
+{{ with $heading }}
+{{/* Matches the header markup of the portfolio and tech-stack blocks. */}}
+<div class="text-center mb-12">
+  <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+    {{ . | emojify }}
+  </h2>
+  {{ with $subtitle }}
+  <p class="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">{{ . | emojify }}</p>
+  {{ end }}
+</div>
+{{ end }}
+
+<div class="container max-w-3xl w-full">
+  <div class="grid grid-cols-1 gap-5">

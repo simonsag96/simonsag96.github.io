@@ -1,0 +1,96 @@
+{{/*
+  Custom `publication` view — a card per publication, matching the surface,
+  ring and hover treatment of the theme's `card` view used by the portfolio
+  section. Selected via `design.view: publication` on a collection block.
+
+  Unlike `card`, this one leads with the year and publication type rather than
+  a featured image, since publications don't carry one.
+
+  The layout is two rows rather than four stacked lines: the venue sits at the
+  far right of the badge row, and the attachment links at the far right of the
+  author row. That keeps the card compact without tightening the padding.
+*/}}
+
+{{ $item := .item }}
+
+{{ $year_value := $item.Params.event_start | default $item.Date }}
+{{ $year := (time $year_value).Format "2006" }}
+
+{{/* "paper-conference" -> i18n key "pub_paper_conference", as layouts/single.html does. */}}
+{{ $pub_type := "" }}
+{{ with $item.Params.publication_types }}
+  {{ with index . 0 }}
+    {{ $pub_type = i18n (printf "pub_%s" (strings.Replace . "-" "_")) | default (strings.Title .) }}
+  {{ end }}
+{{ end }}
+
+{{/* Entries write the venue as "In *Proceedings of…*"; the leading preposition
+     reads as a fragment once the venue stands on its own. */}}
+{{ $venue := $item.Params.publication_short | default $item.Params.publication }}
+{{ $venue = replaceRE `^(?i)in\s+` "" (trim $venue " ") }}
+
+{{ $has_attachments := partial "functions/has_attachments" $item }}
+
+<article
+  class="group relative flex flex-col rounded-2xl bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm p-6 sm:p-7 ring-1 ring-zinc-900/5 dark:ring-white/10 shadow-lg transition-all duration-300 ease-out hover:shadow-xl hover:shadow-primary-500/10 hover:-translate-y-1 focus-within:ring-2 focus-within:ring-primary-500/50"
+  aria-labelledby="pub-title-{{ $item.File.UniqueID }}">
+
+  <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+    {{/* h-7 on every badge: the year is text-sm and the pills text-xs, so
+         padding alone would leave them different heights. */}}
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="inline-flex items-center h-7 rounded-full px-3 text-sm font-bold tabular-nums bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300 ring-1 ring-primary-500/20">
+        {{ $year }}
+      </span>
+      {{ with $pub_type }}
+        <span class="inline-flex items-center h-7 rounded-full px-3 text-xs font-semibold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          {{ . }}
+        </span>
+      {{ end }}
+      {{ if $item.Params.featured }}
+        <span class="inline-flex items-center gap-1 h-7 rounded-full px-3 text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.958a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.367 2.446a1 1 0 00-.363 1.118l1.286 3.958c.3.921-.755 1.688-1.539 1.118l-3.366-2.446a1 1 0 00-1.176 0l-3.366 2.446c-.784.57-1.838-.197-1.539-1.118l1.286-3.958a1 1 0 00-.363-1.118L2.063 9.385c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.951-.69l1.285-3.958z"/>
+          </svg>
+          {{ i18n "featured" | default "Featured" }}
+        </span>
+      {{ end }}
+    </div>
+
+    {{ with $venue }}
+      <span class="text-sm text-zinc-500 dark:text-zinc-500 sm:text-right">{{ . | markdownify }}</span>
+    {{ end }}
+  </div>
+
+  {{/* Deliberately not a link to $item.RelPermalink: the attachment buttons
+       below are the only intended targets. Nothing here carries link styling
+       (colour shift, underline) so the title doesn't read as clickable. */}}
+  <h3 id="pub-title-{{ $item.File.UniqueID }}"
+      class="mt-3 text-lg sm:text-xl font-bold tracking-tight leading-snug text-zinc-900 dark:text-zinc-100">
+    {{ $item.Title }}
+  </h3>
+
+  <div class="mt-2 flex flex-col gap-y-2 sm:flex-row sm:items-end sm:justify-between sm:gap-x-6">
+    {{/* A div, not a p: author_notes render a tooltip containing <div>s, which
+         would implicitly close a <p> and spill the remaining authors out as
+         siblings — one per line, since this card is a flex column. */}}
+    <div class="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+      {{ partial "page_metadata_authors" $item }}
+    </div>
+
+    {{ if $has_attachments }}
+      {{/* -mr-4 absorbs the trailing margin `hb-attachment-link` puts on every
+           button, so the group sits flush with the card's right edge.
+
+           -mb-[3px] handles the vertical: items-end aligns the two columns'
+           box bottoms, but each box ends half its leading below its own
+           baseline, and the buttons (text-xs/16px) carry less of that than the
+           authors (text-sm/leading-relaxed, 22.75px). The buttons' own mb-1.5
+           adds 6px more. Net measured offset is 3px, so pull back by exactly
+           that to sit the button text on the last author line's baseline. */}}
+      <div class="flex flex-wrap items-center shrink-0 -mr-4 -mb-[3px] sm:justify-end">
+        {{ partial "page_links" (dict "page" $item "is_list" 1) }}
+      </div>
+    {{ end }}
+  </div>
+</article>
