@@ -1,0 +1,624 @@
+{{/* Hugo Blox: Portfolio */}}
+{{/* Documentation: https://hugoblox.com/blocks/ */}}
+{{/* License: https://github.com/HugoBlox/kit/blob/main/LICENSE.md */}}
+
+{{/*
+  Local fork of the upstream `portfolio` block. The projects it lists no longer
+  render detail pages (`build.render: never`, see content/projects/_index.md),
+  so each card has to stand on its own. Changes from upstream:
+
+  - The title is plain text. Upstream wraps it in a `stretched-link` covering
+    the whole card, which would 404 now that the pages aren't rendered. The
+    external links at the card foot are the only intended targets, and nothing
+    else carries link styling so the card doesn't read as clickable. Same
+    reasoning as _partials/views/publication.html.
+  - `highlights` (a list in a project's front matter) renders as bullets — the
+    key results that used to live on the detail page. They sit directly under
+    the title so the achievements, not the photo, are what the card leads with.
+  - The summary renders only as a fallback when an entry has no `highlights`.
+    Where both existed they repeated each other almost verbatim, and the
+    duplication pushed the results below the fold of a three-column card.
+  - Images keep upstream's size and rendition; only the text grew. They are
+    lazy-loaded, though: every card is in the DOM at once, Alpine only hides
+    the filtered-out ones with `x-show`.
+  - `image_credit` renders as a caption over the photo. Credits used to sit in
+    the page body, which is no longer rendered anywhere.
+  - The per-card filter map is keyed by `.File.UniqueID`, not `.RelPermalink`.
+    A page with `render: never` has no permalink, so upstream's key was ""
+    for every entry: all six collapsed onto one map slot, the last write won,
+    and every card then matched every filter button.
+
+  Overrides blox/portfolio/block.html from the kit's blox module, which mounts
+  every block.html under blox/ into `layouts/_partials/hbx/blocks/` — hence
+  this path rather than the `layouts/_partials/blox/` one in module.yaml.
+  Re-check against the module version after a `hugo mod get -u`.
+*/}}
+
+{{/* Initialise */}}
+{{ $page := .wcPage }}
+{{ $block := .wcBlock }}
+{{ $content := $block.content }}
+{{ if not (reflect.IsMap $content) }}{{ $content = dict }}{{ end }}
+{{ $design := $block.design }}
+{{ if not (reflect.IsMap $design) }}{{ $design = dict }}{{ end }}
+
+{{/* Enable Alpine.js and animations for this block */}}
+{{ $page.Store.Set "has_alpine" true }}
+{{ $animations_enabled := true }}
+{{ if isset $design "animations" }}
+  {{ $animations_enabled = partial "functions/coerce_bool" (dict "value" (index $design "animations") "default" true) }}
+{{ end }}
+{{ if $animations_enabled }}
+  {{ $page.Store.Set "has_animations" true }}
+{{ end }}
+
+{{/* Query projects */}}
+{{ $query := site.Pages }}
+{{ $filters := index $content "filters" }}
+{{ if not (reflect.IsMap $filters) }}{{ $filters = dict }}{{ end }}
+{{ $folders_raw := index $filters "folders" }}
+{{ $folders := slice }}
+{{ if reflect.IsSlice $folders_raw }}
+  {{ range $folders_raw }}
+    {{ $folder := strings.TrimSpace (printf "%v" .) }}
+    {{ if $folder }}{{ $folders = $folders | append $folder }}{{ end }}
+  {{ end }}
+{{ else if eq (printf "%T" $folders_raw) "string" }}
+  {{ $folder := strings.TrimSpace $folders_raw }}
+  {{ if $folder }}{{ $folders = slice $folder }}{{ end }}
+{{ end }}
+{{ if eq (len $folders) 0 }}{{ $folders = slice "projects" }}{{ end }}
+{{ $query = where $query "Section" "in" $folders }}
+{{ $query = where $query "Kind" "eq" "page" }}
+
+{{/* Get archive page for "View All" link */}}
+{{ $archive_page := "" }}
+{{ $main_folder := index $folders 0 }}
+{{ $archive_page = site.GetPage "Section" $main_folder }}
+
+{{/* Sort */}}
+{{ $sort_by := "Date" }}
+{{ $sort_by_raw := index $content "sort_by" }}
+{{ if eq (printf "%T" $sort_by_raw) "string" }}
+  {{ $sort_by_raw = strings.TrimSpace $sort_by_raw }}
+  {{ if ne $sort_by_raw "" }}{{ $sort_by = $sort_by_raw }}{{ end }}
+{{ end }}
+{{ $sort_by = partial "functions/get_sort_by_parameter" $sort_by }}
+{{ $sort_ascending := partial "functions/coerce_bool" (dict "value" (index $content "sort_ascending") "default" false) }}
+{{ $sort_order := cond $sort_ascending "asc" "desc" }}
+{{ $query = sort $query $sort_by $sort_order }}
+{{ $all_items := $query }}
+
+{{/* Get filter buttons */}}
+{{ $buttons_raw := index $content "buttons" }}
+{{ $buttons := slice }}
+{{ if reflect.IsSlice $buttons_raw }}
+  {{ $buttons = $buttons_raw }}
+{{ else if and $buttons_raw (reflect.IsMap $buttons_raw) }}
+  {{ $buttons = slice $buttons_raw }}
+{{ end }}
+{{ if eq (len $buttons) 0 }}
+  {{ $buttons = slice (dict "name" "All" "tag" "*") }}
+{{ end }}
+{{ $default_idx := partial "functions/coerce_int" (dict "value" (index $content "default_button_index") "default" 0 "min" 0) }}
+{{ $default_tag := "*" }}
+{{ if lt $default_idx (len $buttons) }}
+  {{ with index $buttons $default_idx }}
+    {{ if reflect.IsMap . }}
+      {{ with index . "tag" }}{{ $default_tag = strings.TrimSpace (printf "%v" .) }}{{ end }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+{{ if eq $default_tag "" }}{{ $default_tag = "*" }}{{ end }}
+
+{{/* Status configuration */}}
+{{ $status_content := index $content "status" }}
+{{ if not (reflect.IsMap $status_content) }}{{ $status_content = dict }}{{ end }}
+{{ $status_text_override := "" }}
+{{ with index $status_content "text" }}
+  {{ if eq (printf "%T" .) "string" }}{{ $status_text_override = strings.TrimSpace (printf "%v" .) }}{{ end }}
+{{ end }}
+{{ $status_design := index $design "status_badge" }}
+{{ if not (reflect.IsMap $status_design) }}{{ $status_design = dict }}{{ end }}
+{{ $show_status_badge := partial "functions/coerce_bool" (dict "value" (index $status_design "enable") "default" true) }}
+
+{{/* Store total count before limiting */}}
+{{ $total_count := len $all_items }}
+
+{{/* Limit per filter while keeping per-button visibility accurate */}}
+{{ $count := partial "functions/coerce_int" (dict "value" (index $content "count") "default" 0 "min" 0) }}
+{{ $button_items := dict }}
+{{ $allowed_map := dict }}
+
+{{ range $buttons }}
+  {{ if reflect.IsMap . }}
+    {{ $tag := "*" }}
+    {{ with index . "tag" }}{{ $tag = strings.TrimSpace (printf "%v" .) }}{{ end }}
+    {{ if eq $tag "" }}{{ $tag = "*" }}{{ end }}
+    {{ $tag_key := lower $tag }}
+    {{ $items := slice }}
+    {{ if le $count 0 }}
+      {{ if eq $tag_key "*" }}
+        {{ $items = $all_items }}
+      {{ else }}
+        {{ $items = where $all_items "Params.tags" "intersect" (slice $tag_key) }}
+        {{ if eq (len $items) 0 }}
+          {{ $items = where $all_items "Params.tags" "intersect" (slice $tag) }}
+        {{ end }}
+      {{ end }}
+    {{ else }}
+      {{ if eq $tag_key "*" }}
+        {{ $items = first $count $all_items }}
+      {{ else }}
+        {{ $items = first $count (where $all_items "Params.tags" "intersect" (slice $tag_key)) }}
+        {{ if eq (len $items) 0 }}
+          {{ $items = first $count (where $all_items "Params.tags" "intersect" (slice $tag)) }}
+        {{ end }}
+      {{ end }}
+    {{ end }}
+    {{ $button_items = merge $button_items (dict $tag_key $items) }}
+
+    {{ range $items }}
+      {{ $key := .File.UniqueID }}
+      {{ $allowed := slice }}
+      {{ with index $allowed_map $key }}{{ $allowed = . }}{{ end }}
+      {{ if not (in $allowed $tag) }}
+        {{ $allowed = $allowed | append $tag }}
+      {{ end }}
+      {{ $allowed_map = merge $allowed_map (dict $key $allowed) }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{/* Build render list in sorted order, only keeping items that belong to a filter */}}
+{{ $render_items := slice }}
+{{ range $all_items }}
+  {{ if isset $allowed_map .File.UniqueID }}
+    {{ $render_items = $render_items | append . }}
+  {{ end }}
+{{ end }}
+
+{{/* Fallback to all items if something went wrong */}}
+{{ if eq (len $render_items) 0 }}
+  {{ $render_items = $all_items }}
+  {{ range $render_items }}
+    {{ $allowed_map = merge $allowed_map (dict .File.UniqueID (slice "*")) }}
+  {{ end }}
+{{ end }}
+
+{{ $query = $render_items }}
+{{ $default_items := index $button_items (lower $default_tag) | default (slice) }}
+{{ $displayed_count := len $default_items }}
+
+{{/* Columns */}}
+{{ $columns := partial "functions/coerce_int" (dict "value" (index $design "columns") "default" 3 "min" 1 "max" 4) }}
+{{ $grid_class := "md:grid-cols-2 lg:grid-cols-3" }}
+{{ if eq $columns 2 }}
+  {{ $grid_class = "md:grid-cols-2" }}
+{{ else if eq $columns 4 }}
+  {{ $grid_class = "md:grid-cols-2 lg:grid-cols-4" }}
+{{ end }}
+
+{{ $fallback_icon := "code-bracket" }}
+{{ $fallback_raw := index $design "fallback_icon" }}
+{{ if eq (printf "%T" $fallback_raw) "string" }}
+  {{ $fallback_icon = $fallback_raw }}
+{{ end }}
+
+{{/* Narrowed from upstream's max-w-7xl. At three columns that width made this
+     the widest section on the page by far - 1280px against 1024px for the hero
+     and 768px for the publications list and contact card.
+
+     60rem is 2.25/3 of the old width, so two columns here are a little wider
+     than the three used to be: 436px per tile against 389px. Change this
+     together with `design.columns` in content/_index.md. */}}
+<div class="mx-auto max-w-[60rem] px-4 sm:px-6 lg:px-8 py-16" x-data="{ activeFilter: {{ $default_tag | jsonify }} }">
+  
+  {{/* Header */}}
+  <div class="text-center mb-12">
+    {{ with index $content "title" }}
+    <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+      {{ printf "%v" . | emojify | $page.RenderString }}
+    </h2>
+    {{ end }}
+    {{ with index $content "subtitle" }}
+    <p class="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+      {{ printf "%v" . | emojify | $page.RenderString }}
+    </p>
+    {{ end }}
+  </div>
+
+  {{/* Filter Buttons */}}
+  {{ if gt (len $buttons) 1 }}
+  <div class="flex flex-wrap justify-center gap-2 mb-10">
+    {{ range $idx, $button := $buttons }}
+    {{ if reflect.IsMap $button }}
+    {{ $button_name := "" }}
+    {{ with index $button "name" }}{{ $button_name = strings.TrimSpace (printf "%v" .) }}{{ end }}
+    {{ $button_tag := "*" }}
+    {{ with index $button "tag" }}{{ $button_tag = strings.TrimSpace (printf "%v" .) }}{{ end }}
+    <button 
+      @click="activeFilter = {{ $button_tag | jsonify }}"
+      :class="activeFilter === {{ $button_tag | jsonify }} 
+        ? 'bg-primary-600 text-white border-primary-600 shadow-lg shadow-primary-500/25' 
+        : 'bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20'"
+      class="px-5 py-2.5 rounded-full text-sm font-medium border backdrop-blur-sm transition-all duration-300 ease-out cursor-pointer"
+    >
+      {{ $button_name | default "All" }}
+    </button>
+    {{ end }}
+    {{ end }}
+  </div>
+  {{ end }}
+
+  {{/* Project Grid with staggered reveal animation */}}
+  <div class="grid grid-cols-1 {{ $grid_class }} gap-6" data-stagger="100">
+    {{ range $index, $item := $query }}
+      {{ $item_key := $item.File.UniqueID }}
+      {{ $card_allowed_filters := index $allowed_map $item_key }}
+      {{ if not $card_allowed_filters }}{{ $card_allowed_filters = slice "*" }}{{ end }}
+      {{ $card_allowed_filters_json := $card_allowed_filters | jsonify }}
+
+      {{/* Get tags as comma-separated string */}}
+      {{ $tags := slice }}
+      {{ $tags_raw := $item.Params.tags }}
+      {{ if reflect.IsSlice $tags_raw }}
+        {{ range $tags_raw }}
+          {{ $tag := strings.TrimSpace (printf "%v" .) }}
+          {{ if $tag }}{{ $tags = $tags | append $tag }}{{ end }}
+        {{ end }}
+      {{ else if eq (printf "%T" $tags_raw) "string" }}
+        {{ $tag_string := strings.TrimSpace $tags_raw }}
+        {{ if $tag_string }}
+          {{ if strings.Contains $tag_string "," }}
+            {{ range (split $tag_string ",") }}
+              {{ $tag := strings.TrimSpace . }}
+              {{ if $tag }}{{ $tags = $tags | append $tag }}{{ end }}
+            {{ end }}
+          {{ else }}
+            {{ $tags = slice $tag_string }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+      
+      {{/* Get status */}}
+      {{ $status := "" }}
+      {{ $status_raw := $item.Params.status }}
+      {{ if eq (printf "%T" $status_raw) "string" }}
+        {{ $status = strings.TrimSpace $status_raw }}
+      {{ end }}
+      {{ $status_display := $status }}
+      {{ if ne $status_text_override "" }}
+        {{ $status_display = $status_text_override }}
+      {{ end }}
+      {{ $status_color_source := cond (ne $status "" ) $status $status_display }}
+      {{ $status_norm := upper $status_color_source }}
+      {{ $status_class := "bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-500/30 dark:bg-emerald-500 dark:border-emerald-400" }}
+      {{ if eq $status_norm "WIP" }}
+        {{ $status_class = "bg-amber-500 text-white border-amber-400 shadow-md shadow-amber-400/30 dark:bg-amber-500" }}
+      {{ else if eq $status_norm "ARCHIVED" }}
+        {{ $status_class = "bg-gray-600 text-white border-gray-500 shadow-md shadow-gray-500/30 dark:bg-gray-500" }}
+      {{ end }}
+      {{ $render_status_badge := and $show_status_badge (ne $status_display "") }}
+
+      <article 
+        x-data="{ filters: {{ $card_allowed_filters_json }} }"
+        x-show="filters.includes(activeFilter)"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+        x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        class="group relative flex flex-col bg-white dark:bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-white/[0.08] overflow-hidden hover:border-primary-500/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 card-hover-lift"
+      >
+        {{/* Card Header / Image
+
+             The box is 436x192 CSS px (the 60rem container less its padding,
+             split over two columns with a gap-6 between), so 2.27:1. Renditions
+             are made at exactly that ratio at 2x - upstream's "600x400" is 1.5:1,
+             which meant every image was cropped twice: once by Fill to 1.5:1,
+             then again by object-cover to fit the wider box. A photo kept barely
+             half its frame and a wide logo about a third of it.
+
+             `image_fit: contain` in a project's front matter switches to Fit, so
+             a wordmark that is wider than the box is shown whole rather than
+             sliced. `image_background` then fills the letterbox bars with the
+             banner's own backdrop colour so they don't read as empty space. */}}
+          {{ $fit := "cover" }}
+          {{ with $item.Params.image_fit }}{{ $fit = lower (printf "%v" .) }}{{ end }}
+          {{ $contain := eq $fit "contain" }}
+          {{/* Same treatment for every card - contained or cropped, all of them
+               zoom on hover. A contained logo grows past the box edge by the
+               same 5%, which its own backdrop colour absorbs. */}}
+          {{ $img_class := printf "w-full h-full %s transition-transform duration-500 group-hover:scale-105"
+               (cond $contain "object-contain" "object-cover") }}
+
+        <div class="relative h-48 overflow-hidden"
+             {{ with $item.Params.image_background }}style="{{ printf "background-color:%s" . | safeCSS }}"{{ end }}>
+          {{ $image := $item.Resources.GetMatch "{featured,cover,thumbnail}*" }}
+          {{ if $image }}
+            {{ if strings.Contains $image.MediaType.SubType "svg" }}
+              <img 
+                src="{{ $image.RelPermalink }}" 
+                alt="{{ $item.Title }}"
+                loading="lazy" decoding="async"
+                class="{{ $img_class }}"
+              >
+            {{ else }}
+                  {{/* Explicit anchor. The site sets `imaging.anchor: smart` in
+                   hugo.yaml, and on these photos entropy detection pulls the
+                   crop window hard to the top edge - the racing shot ended up
+                   with both cars against the upper border over empty tarmac,
+                   and the Galileo still lost its broadcast caption. Centre is
+                   the better default here; `image_anchor` in a project's front
+                   matter overrides it (Top, Bottom, Left, Right, Smart, ...). */}}
+              {{ $anchor := "Center" }}
+              {{ with $item.Params.image_anchor }}{{ $anchor = printf "%v" . }}{{ end }}
+              {{ $img := cond $contain ($image.Fit "872x384 webp") ($image.Fill (printf "872x384 webp %s" $anchor)) }}
+              <img 
+                src="{{ $img.RelPermalink }}" 
+                alt="{{ $item.Title }}"
+                loading="lazy" decoding="async"
+                width="{{ $img.Width }}" height="{{ $img.Height }}"
+                class="{{ $img_class }}"
+              >
+            {{ end }}
+          {{ else }}
+            {{/* Gradient placeholder with configurable icon */}}
+            <div class="w-full h-full bg-gradient-to-br from-primary-600/40 via-secondary-600/30 to-primary-800/50 flex items-center justify-center">
+              {{ partial "functions/get_icon" (dict "name" $fallback_icon "attributes" "class=\"w-16 h-16 text-white/30\"") }}
+            </div>
+          {{ end }}
+          
+          {{/* Status Badge */}}
+          {{ if $render_status_badge }}
+          <div class="absolute top-3 right-3">
+            <span class="px-2.5 py-1.5 text-xs font-semibold rounded-full border {{ $status_class }}">
+              {{ $status_display }}
+            </span>
+          </div>
+          {{ end }}
+          
+          {{/* No gradient overlay: upstream dimmed every image to keep a badge
+               or credit legible, but it washed out the pictures - most visibly
+               the broadcast caption on the Galileo still. The credit carries its
+               own backdrop instead, so only it gets darkened, not the photo. */}}
+
+          {{/* Attribution for third-party photos. This used to sit at the top of
+               the page body, which isn't rendered anywhere now. */}}
+          {{ with $item.Params.image_credit }}
+          <div class="absolute bottom-0 right-0 rounded-tl px-1.5 py-1 bg-gray-900/65 text-[0.65rem] leading-none text-white [&_a]:underline [&_a]:decoration-white/60 hover:[&_a]:decoration-white">
+            {{ . | $page.RenderString }}
+          </div>
+          {{ end }}
+        </div>
+
+        {{/* Card Content - use flex-col to push links to bottom */}}
+        <div class="p-5 flex flex-col flex-grow">
+          {{/* Title */}}
+          {{/* Plain text, not a link: the detail pages aren't rendered and the
+               link buttons at the foot are the only intended targets. */}}
+          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2 leading-snug">
+            {{ $item.Title }}
+          </h3>
+          
+          {{/* Summary */}}
+          {{ $summary := "" }}
+          {{ $summary_raw := $item.Params.summary }}
+          {{ if $summary_raw }}
+            {{ $summary = strings.TrimSpace (printf "%v" $summary_raw) }}
+          {{ end }}
+          {{/* Key results, from `highlights` in the project's front matter. This
+               is the substance that used to sit on the detail page. */}}
+          {{ $highlights := slice }}
+          {{ $highlights_raw := $item.Params.highlights }}
+          {{ if reflect.IsSlice $highlights_raw }}
+            {{ range $highlights_raw }}
+              {{ $h := strings.TrimSpace (printf "%v" .) }}
+              {{ if $h }}{{ $highlights = $highlights | append $h }}{{ end }}
+            {{ end }}
+          {{ else if eq (printf "%T" $highlights_raw) "string" }}
+            {{ $h := strings.TrimSpace $highlights_raw }}
+            {{ if $h }}{{ $highlights = slice $h }}{{ end }}
+          {{ end }}
+          {{ if gt (len $highlights) 0 }}
+          <ul class="mb-4 space-y-1.5">
+            {{ range $highlights }}
+            <li class="flex gap-2 text-sm leading-snug text-gray-700 dark:text-gray-300">
+              <span class="mt-[0.4rem] h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500/70" aria-hidden="true"></span>
+              <span>{{ . | $page.RenderString }}</span>
+            </li>
+            {{ end }}
+          </ul>
+          {{ else }}
+            {{/* Only when an entry has no highlights — otherwise the two said
+                 the same thing twice and doubled the height of the card. */}}
+            {{ if $summary }}
+            <p class="text-sm leading-relaxed text-gray-600 dark:text-gray-400 mb-4">
+              {{ $summary | $page.RenderString }}
+            </p>
+            {{ else }}
+            <p class="text-sm leading-relaxed text-gray-600 dark:text-gray-400 mb-4">
+              {{ $item.Summary }}
+            </p>
+            {{ end }}
+          {{ end }}
+
+          {{/* Tech Stack Tags - fixed 2-line height for consistency */}}
+          {{ $tech_stack := slice }}
+          {{ $tech_raw := $item.Params.tech_stack }}
+          {{ if reflect.IsSlice $tech_raw }}
+            {{ range $tech_raw }}
+              {{ $tech := strings.TrimSpace (printf "%v" .) }}
+              {{ if $tech }}{{ $tech_stack = $tech_stack | append $tech }}{{ end }}
+            {{ end }}
+          {{ else if eq (printf "%T" $tech_raw) "string" }}
+            {{ $tech_string := strings.TrimSpace $tech_raw }}
+            {{ if $tech_string }}
+              {{ if strings.Contains $tech_string "," }}
+                {{ range (split $tech_string ",") }}
+                  {{ $tech := strings.TrimSpace . }}
+                  {{ if $tech }}{{ $tech_stack = $tech_stack | append $tech }}{{ end }}
+                {{ end }}
+              {{ else }}
+                {{ $tech_stack = slice $tech_string }}
+              {{ end }}
+            {{ end }}
+          {{ end }}
+          {{ if gt (len $tech_stack) 0 }}
+          {{/* Upstream caps this at 4 with a "+N" pill and reserves min-h-[3.5rem]
+               to keep three-column cards even. At two columns they all fit on
+               one line, and mt-auto on the link row already levels the cards. */}}
+          <div class="flex flex-wrap gap-1.5 mb-4">
+            {{ range $tech_stack }}
+            <span class="px-2 py-0.5 text-xs font-medium rounded-md bg-primary-100 dark:bg-primary-500/10 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-500/20 h-fit">
+              {{ . }}
+            </span>
+            {{ end }}
+          </div>
+          {{ end }}
+
+          {{/* Action Links - pushed to bottom with mt-auto */}}
+          {{ $links := slice }}
+          {{ $links_raw := $item.Params.links }}
+          {{ $links_iter := slice }}
+          {{ if reflect.IsSlice $links_raw }}
+            {{ $links_iter = $links_raw }}
+          {{ else if and $links_raw (reflect.IsMap $links_raw) }}
+            {{ $links_iter = slice $links_raw }}
+          {{ end }}
+          {{ if gt (len $links_iter) 0 }}
+            {{ range $links_iter }}
+              {{ $url := "" }}
+              {{ $label := "" }}
+              {{ $icon := "" }}
+              {{ $type := "" }}
+              {{ $new_tab := false }}
+              {{ if reflect.IsMap . }}
+                {{ with index . "url" }}{{ $url = strings.TrimSpace (printf "%v" .) }}{{ end }}
+                {{ if not $url }}
+                  {{ with index . "link" }}{{ $url = strings.TrimSpace (printf "%v" .) }}{{ end }}
+                {{ end }}
+                {{ with index . "label" }}{{ $label = strings.TrimSpace (printf "%v" .) }}{{ end }}
+                {{ if not $label }}
+                  {{ with index . "name" }}{{ $label = strings.TrimSpace (printf "%v" .) }}{{ end }}
+                {{ end }}
+                {{ with index . "type" }}{{ $type = lower (strings.TrimSpace (printf "%v" .)) }}{{ end }}
+                {{ with index . "icon" }}{{ $icon = printf "%v" . }}{{ end }}
+                {{ $new_tab = partial "functions/coerce_bool" (dict "value" (index . "new_tab") "default" false) }}
+              {{ else if eq (printf "%T" .) "string" }}
+                {{ $url = strings.TrimSpace . }}
+              {{ end }}
+              {{ if $url }}
+                {{ if not $label }}
+                  {{ if eq $type "github" }}
+                    {{ $label = i18n "portfolio_link_code" | default "Code" }}
+                  {{ else if eq $type "live" }}
+                    {{ $label = i18n "portfolio_link_live" | default "Live" }}
+                  {{ else if eq $type "demo" }}
+                    {{ $label = i18n "portfolio_link_demo" | default "Demo" }}
+                  {{ else }}
+                    {{ $label = i18n "portfolio_link_default" | default "Link" }}
+                  {{ end }}
+                {{ end }}
+                {{ if not $icon }}
+                  {{ if eq $type "github" }}
+                    {{ $icon = "brands/github" }}
+                  {{ else if eq $type "live" }}
+                    {{ $icon = "globe-alt" }}
+                  {{ else if eq $type "demo" }}
+                    {{ $icon = "play" }}
+                  {{ else }}
+                    {{ $icon = "link" }}
+                  {{ end }}
+                {{ end }}
+                {{ $links = $links | append (dict "url" $url "label" $label "icon" $icon "new_tab" $new_tab) }}
+              {{ end }}
+            {{ end }}
+          {{ end }}
+          {{ if gt (len $links) 0 }}
+          <div class="flex flex-wrap items-center gap-1.5 pt-3 border-t border-gray-100 dark:border-white/5 mt-auto">
+            {{ range $links }}
+              {{ $icon := index . "icon" | default "link" }}
+              {{ $label := index . "label" | default (i18n "portfolio_link_default" | default "Link") }}
+              {{ $link_url := index . "url" }}
+              {{ $new_tab := partial "functions/coerce_bool" (dict "value" (index . "new_tab") "default" false) }}
+              {{ $target := "" }}
+              {{ $scheme := (urls.Parse $link_url).Scheme }}
+              {{ if not $scheme }}
+                {{ if not (hasPrefix $link_url "#") }}
+                  {{ $link_url = $link_url | relLangURL }}
+                {{ end }}
+                {{ if eq (path.Ext $link_url) ".pdf" }}{{ $new_tab = true }}{{ end }}
+              {{ else if in (slice "http" "https") $scheme }}
+                {{ $new_tab = true }}
+              {{ end }}
+              {{ if $new_tab }}
+                {{ $target = "target=\"_blank\" rel=\"noopener noreferrer\"" }}
+              {{ end }}
+              {{/* Styled as buttons rather than upstream's bare text links: with
+                   the card itself no longer clickable, these are the only way
+                   out of a card and need to read as such. (Upstream's z-10 and
+                   stopPropagation only existed to escape the stretched-link.) */}}
+              <a 
+                href="{{ $link_url | safeURL }}" 
+                {{ $target | safeHTMLAttr }}
+                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-700 dark:hover:text-primary-300 hover:border-primary-500/40 transition-colors"
+              >
+                {{ partial "functions/get_icon" (dict "name" $icon "attributes" "class=\"w-4 h-4\"") }}
+                <span>{{ $label }}</span>
+              </a>
+            {{ end }}
+          </div>
+          {{ end }}
+        </div>
+      </article>
+    {{ end }}
+  </div>
+
+  {{/* View All Link */}}
+  {{/* Smart default: show link if there are more items than displayed, unless explicitly disabled */}}
+  {{ $archive := index $content "archive" }}
+  {{ if not (reflect.IsMap $archive) }}{{ $archive = dict }}{{ end }}
+  {{ $default_show_archive := false }}
+  {{ $default_show_archive = gt $total_count $displayed_count }}
+  {{ $show_archive_link := partial "functions/coerce_bool" (dict "value" (index $archive "enable") "default" $default_show_archive) }}
+  {{ if and $show_archive_link $archive_page }}
+    {{ $archive_link := "" }}
+    {{ $archive_link_raw := index $archive "link" }}
+    {{ if eq (printf "%T" $archive_link_raw) "string" }}
+      {{ $archive_link = strings.TrimSpace $archive_link_raw }}
+    {{ end }}
+    {{ if not $archive_link }}
+      {{ $archive_link = $archive_page.RelPermalink }}
+    {{ end }}
+    {{ $archive_target := "" }}
+    {{ $archive_scheme := (urls.Parse $archive_link).Scheme }}
+    {{ if not $archive_scheme }}
+      {{ if not (hasPrefix $archive_link "#") }}
+        {{ $archive_link = $archive_link | relLangURL }}
+      {{ end }}
+    {{ else if in (slice "http" "https") $archive_scheme }}
+      {{ $archive_target = "target=\"_blank\" rel=\"noopener\"" }}
+    {{ end }}
+    
+    {{ $archive_text := "" }}
+    {{ $archive_text_raw := index $archive "text" }}
+    {{ if eq (printf "%T" $archive_text_raw) "string" }}
+      {{ $archive_text = strings.TrimSpace $archive_text_raw }}
+    {{ end }}
+    {{ if not $archive_text }}{{ $archive_text = i18n "portfolio_view_all" | default "View All Projects" }}{{ end }}
+    
+    <div class="text-center mt-12">
+      <a 
+        href="{{ $archive_link | safeURL }}" 
+        {{ $archive_target | safeHTMLAttr }}
+        class="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-gray-800 dark:text-white bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full hover:bg-gray-200 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20 transition-all duration-300"
+      >
+        {{ $archive_text | emojify }}
+        {{ partial "functions/get_icon" (dict "name" "arrow-right" "attributes" "class=\"w-4 h-4\"") }}
+      </a>
+    </div>
+  {{ end }}
+</div>

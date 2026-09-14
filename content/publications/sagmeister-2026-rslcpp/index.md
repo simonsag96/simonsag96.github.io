@@ -1,0 +1,24 @@
+---
+title: "RSLCPP - Deterministic Simulations Using ROS 2"
+authors:
+  - me
+  - Marcel Weinmann
+  - Phillip Pitschi
+  - Markus Lienkamp
+date: "2026-06-16T00:00:00Z"
+publishDate: "2026-06-16T00:00:00Z"
+publication_types: ["article-journal"]
+publication: "*IEEE Robotics and Automation Practice*"
+publication_short: "*IEEE Robotics and Automation Practice*"
+abstract: "This paper presents a methodology for deterministic simulations using ROS 2 nodes and introduces the ROS Simulation Library for C++ (RSLCPP). The approach enables reproducible simulation routines across hardware platforms without requiring code changes to the integrated nodes."
+summary: "Deterministic ROS 2 simulation methodology and the RSLCPP library."
+featured: true
+hugoblox:
+  ids:
+    doi: 10.1109/RAP.2026.3704080
+links:
+  - type: pdf
+    url: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=11568503
+projects: []
+slides: ""
+---

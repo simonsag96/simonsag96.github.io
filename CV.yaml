@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/rendercv/rendercv/refs/tags/v2.7/schema.json
+cv:
+  name: Simon Sagmeister
+  headline: Research Associate and Teamlead
+  location: Munich, Germany
+  email: 
+  photo:
+  phone:
+  website: 
+  social_networks:
+    - network: LinkedIn
+      username: simonsag
+    - network: GitHub
+      username: simonsag96
+design:
+  theme: classic
+locale:
+  language: english
+settings:
+  current_date: today
+  render_command:
+    output_folder: rendercv_output
+    pdf_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.pdf
+    markdown_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.md
+    html_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.html
+    png_path: OUTPUT_FOLDER/NAME_IN_SNAKE_CASE_CV.png

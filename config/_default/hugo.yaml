@@ -6,7 +6,10 @@
 # Website name (set in params.yaml under hugoblox.branding.name)
 title: ''
 # Website URL
-baseURL: 'https://example.com/'
+# Not set for search ranking, but for the absolute URLs Hugo bakes into og:image,
+# og:url and canonical — with the placeholder still here, every link preview
+# (LinkedIn, Slack, mail) pointed at example.com and rendered without an image.
+baseURL: 'https://www.simon-sagmeister.de/'
 
 ############################
 ## LANGUAGE
@@ -45,6 +48,10 @@ taxonomies:
   author: authors
   tag: tags
   publication_type: publication_types
+# Projects and publications no longer render pages of their own, so the tag and
+# publication-type listings would be pages of links to 404s. Tags still drive the
+# portfolio filter buttons — that reads `Params.tags` directly, not the taxonomy.
+disableKinds: ['taxonomy', 'term']
 markup:
   _merge: deep
   highlight:
